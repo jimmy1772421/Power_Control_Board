@@ -25,7 +25,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "oled.h"
+#include "measurements.h"
+#include "telemetry.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,6 +49,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+static Measurements measurements;
+static uint32_t last_display_ms = 0;
 
 /* USER CODE END PV */
 
@@ -93,6 +98,32 @@ int main(void)
   MX_I2C1_Init();
   MX_USB_Device_Init();
   /* USER CODE BEGIN 2 */
+  HAL_Delay(30);  // Allow the OLED to power up
+
+  OLED_Init();
+  OLED_NewFrame();
+
+  if (!Measurements_Init()) {
+    Error_Handler();
+  }
+
+  OLED_PrintASCIIString(
+      0, 0,
+      "Power Controller",
+      &afont8x6,
+      OLED_COLOR_NORMAL
+  );
+
+  OLED_PrintASCIIString(
+      0, 16,
+      "Starting...",
+      &afont8x6,
+      OLED_COLOR_NORMAL
+  );
+
+  OLED_ShowFrame();
+
+
 
   /* USER CODE END 2 */
 
@@ -103,6 +134,59 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uint32_t now = HAL_GetTick();
+
+    if ((uint32_t)(now - last_display_ms) >= 250U) {
+      last_display_ms = now;
+
+      bool valid = Measurements_Read(&measurements);
+
+      if (valid) {
+        (void)Telemetry_Send(now, &measurements);
+      }
+
+      char line[32];
+
+      OLED_NewFrame();
+
+      OLED_PrintASCIIString(
+          0, 0, "Power Controller",
+          &afont8x6, OLED_COLOR_NORMAL
+      );
+
+      if (valid) {
+        snprintf(line, sizeof(line), "Vin : %lu.%03lu V",
+                 (unsigned long)(measurements.vin_mv / 1000U),
+                 (unsigned long)(measurements.vin_mv % 1000U));
+
+        OLED_PrintASCIIString(
+            0, 16, line, &afont8x6, OLED_COLOR_NORMAL
+        );
+
+        snprintf(line, sizeof(line), "Vout: %lu.%03lu V",
+                 (unsigned long)(measurements.vout_mv / 1000U),
+                 (unsigned long)(measurements.vout_mv % 1000U));
+
+        OLED_PrintASCIIString(
+            0, 32, line, &afont8x6, OLED_COLOR_NORMAL
+        );
+
+        snprintf(line, sizeof(line), "Iout: %lu.%03lu A",
+                 (unsigned long)(measurements.current_ma / 1000U),
+                 (unsigned long)(measurements.current_ma % 1000U));
+
+        OLED_PrintASCIIString(
+            0, 48, line, &afont8x6, OLED_COLOR_NORMAL
+        );
+      } else {
+        OLED_PrintASCIIString(
+            0, 24, "ADC read error",
+            &afont8x6, OLED_COLOR_NORMAL
+        );
+      }
+
+      OLED_ShowFrame();
+    }
   }
   /* USER CODE END 3 */
 }
